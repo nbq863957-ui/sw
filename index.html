@@ -243,6 +243,27 @@
         <line id="cg1" class="cable-glow" x1="500" y1="228" x2="500" y2="420"/>
         <line id="cg2" class="cable-glow" x1="860" y1="228" x2="595" y2="420"/>
 
+        <!-- Hub + 打印机（仅场景 D · 过滤 时显示：E0/1 同段多设备） -->
+        <g id="hubG" style="display:none">
+          <line class="cable" x1="259" y1="334" x2="259" y2="416"/>
+          <!-- Hub 骑在 E0/1 网线上：PC1 与打印机共享同一段 -->
+          <rect x="203" y="291" width="112" height="44" rx="8" fill="#0e1830" stroke="#d97706" stroke-width="2"/>
+          <circle cx="221" cy="313" r="3.2" fill="#fbbf24"/>
+          <circle cx="233" cy="313" r="3.2" fill="#fbbf24"/>
+          <circle cx="245" cy="313" r="3.2" fill="#fbbf24"/>
+          <circle cx="257" cy="313" r="3.2" fill="#fbbf24"/>
+          <text x="286" y="319" fill="#fbbf24" font-size="15" font-weight="700" text-anchor="middle">Hub</text>
+          <text x="259" y="283" fill="#64748b" font-size="12.5" text-anchor="middle" font-family="Consolas,monospace">物理层中继 · 收到即复制到其余所有口</text>
+          <!-- 打印机 -->
+          <rect x="200" y="404" width="58" height="16" rx="3" fill="#1e293b" stroke="#334765"/>
+          <rect x="197" y="416" width="124" height="68" rx="10" fill="#0e1830" stroke="#334765" stroke-width="2.5"/>
+          <rect x="215" y="432" width="88" height="34" rx="4" fill="#243044"/>
+          <circle cx="291" cy="440" r="2.6" fill="#34d399"/>
+          <rect x="223" y="449" width="62" height="7" rx="2" fill="#0f172a"/>
+          <text x="259" y="509" fill="#e2e8f0" font-size="17" font-weight="700" text-anchor="middle">打印机</text>
+          <text x="259" y="528" fill="#64748b" font-size="13" text-anchor="middle" font-family="Consolas,monospace">DD:DD:DD:DD:DD:DD</text>
+        </g>
+
         <!-- ===== PC1 ===== -->
         <g>
           <rect x="78" y="56" width="124" height="78" rx="10" fill="#0e1830" stroke="#334765" stroke-width="2.5"/>
@@ -516,6 +537,8 @@ function movePacket(from, to, opt = {}){
 /* PC(i) 的网卡位置 / 交换机端口 i */
 const pcPoint = i => ({ x:PCS[i].cx, y:230 });
 const portPoint = i => ({ x:PORTS[i].x, y:PORTS[i].y });
+const HUB_P = { x:259, y:313 };   // Hub 中心（在 E0/1 网线上）
+const PRT_P = { x:259, y:424 };   // 打印机顶部
 
 function float(x, y, text, color){
   const t = svgEl('text', { x, y, class:'float', fill:color });
@@ -741,44 +764,48 @@ const scenarios = [
 },
 {
   name:'场景 D · 过滤（不转发）',
-  desc:'目的 MAC 就在接收端口上：帧原地丢弃，不去打扰任何端口',
+  desc:'Hub 无脑复制到所有口；目的就在接收端口 → 过滤',
   preseed(){ clearTable(true); learn(A, 'E0/1'); log('<span class="lc">沿用</span> 已学表项 AA…↔E0/1'); },
   steps:[
-    { text:'<b>第四个动作 —— 过滤（Filtering）。</b>设定：E0/1 下还通过小 Hub 接了一台打印机（MAC = DD…），交换机早已学到「DD… ↔ E0/1」。<b>一个端口下可以挂多台设备</b>（经 Hub 或另一台交换机级联），所以 MAC 表里两条记录可以指向同一个端口。', run:async t => {
+    { text:'<b>第四个动作 —— 过滤（Filtering）。</b>设定：交换机 <b>E0/1 口上插的是一台 Hub</b>，Hub 下挂着 <b>PC1</b> 和<b>打印机（MAC = DD…）</b> —— 三者共享同一段线路、同一个冲突域。<b>Hub 是物理层中继：从任一口收到信号，原样复制到其余所有口</b>，不会学习、不会查表。打印机开机上报过状态，交换机早已学到「DD… ↔ E0/1」。', run:async t => {
         learn(PRT, 'E0/1');
-        log('<span class="lc">设定</span> E0/1 下经 Hub 还接了一台打印机 DD:…（已学习）');
-        await sleep(1700); chk(t);
+        await sleep(2000); chk(t);
       }},
-    { text:'<b>PC1 给打印机发打印任务</b>：封装以太网帧 —— <b>目的 MAC = DD…（打印机）</b>、<b>源 MAC = AA…（PC1）</b>。注意：目的 MAC 不是广播，也不是未知 —— 它就在表里。', run:async t => {
-        frameHL('dst','src','type','data','fcs');
+    { text:'<b>PC1 给打印机发打印任务</b>：封装以太网帧 —— <b>目的 MAC = DD…（打印机）</b>、<b>源 MAC = AA…（PC1）</b>。目的 MAC 不是广播、也不是未知 —— 它就在表里。帧沿网线下行，<b>第一站：Hub</b>。', run:async t => {
         float(140, 44, 'PC1 → 打印机', '#7dd3fc');
-        await sleep(1600); chk(t);
+        await sleep(900); chk(t);
+        await movePacket(pcPoint(0), HUB_P, { cable:0, type:'u', label:'打印任务' });
+        chk(t); await sleep(600); chk(t);
       }},
-    { text:'帧从 PC1 发出，进入 <b>E0/1 端口</b>。交换机照例先学习源 MAC（AA… 已在表中 → 刷新老化时间），然后<b>查目的 MAC</b>。', run:async t => {
-        frameClear();
-        log(`<span class="lc">E0/1</span> 收到帧: Src=${A} Dst=${PRT} (单播)`);
+    { text:'<b>Hub 的真实行为 —— 无脑复制：</b>它把这份帧<b>同时</b>发往其余所有端口：一份<b>直送打印机</b>，一份<b>继续送给交换机 E0/1</b>。不做任何判断 —— 这就是 Hub 和交换机的本质区别。', run:async t => {
+        await Promise.all([
+          movePacket(HUB_P, PRT_P, { type:'u', label:'→ 打印机' }),
+          movePacket(HUB_P, portPoint(0), { cable:0, type:'u', label:'→ 交换机' }),
+        ]);
+        chk(t);
+      }},
+    { text:'打印机<b>已经收到打印任务了</b> —— 全程没等交换机做任何决定（同段直达）。与此同时，交换机从 E0/1 收到那份副本：照例<b>学习</b>源 MAC（AA… 刷新），然后<b>查目的 MAC = DD…</b>。', run:async t => {
         CAPR.dJob = cap({ dir:'E0/1 ▸ 入', src:A, dst:PRT, proto:'IPv4', pcls:'pr-ip', len:'98B',
-          info:'打印任务: PC1 → 打印机（同段线路）',
+          info:'打印任务副本经 Hub 到达 E0/1',
           detail: ipDetail(98, 'E0/1', PRT, '打印机(Hub下)', A, 'PC1', '192.168.1.10', '192.168.1.99', '72 字节（模拟打印作业）') });
-        await movePacket(pcPoint(0), portPoint(0), { cable:0, type:'u', label:'PC1 → 打印机' });
-        chk(t); led(0); fcsOK();
+        chk(t); led(0);
         learn(A, 'E0/1');
-        await sleep(700); chk(t);
+        float(259, 396, '打印机已收到（同段直达）', '#34d399');
+        await sleep(1400); chk(t);
       }},
-    { text:'查表结果：DD… <b>命中 E0/1</b> —— 但出端口和<b>接收端口是同一个</b>！把帧再从 E0/1 发回去毫无意义（源和目的本就在同一段线路上）→ <span class="em">过滤：不转发，原地丢弃</span>。E0/2、E0/3 完全安静 —— 过滤的价值：<b>把无关流量彻底隔离</b>。', run:async t => {
+    { text:'查表结果：DD… <b>命中 E0/1 —— 出端口和接收端口是同一个！</b>把帧再从 E0/1 发回去毫无意义（打印机早已通过 Hub 拿到了）→ <span class="em">过滤：不转发，原地丢弃</span>。E0/2、E0/3 全程安静 —— 过滤的价值：<b>把无关流量彻底隔离</b>。', run:async t => {
         const r = lookup(PRT);
         if (r === 'E0/1'){
-          log(`<span class="lr">过滤</span> Dst ${PRT} 与接收端口 E0/1 <b>相同</b> → 不转发，直接丢弃`);
           float(405, 396, '过滤', '#f87171');
           await badge('目的就在接收端口 → 过滤(不转发)', '#f87171');
         }
         if (CAPR.dJob) annotate(CAPR.dJob, '目的=接收端口 → 过滤, 不转发', '#f87171');
         chk(t);
       }},
-    { text:'<b>四大动作凑齐：</b><span class="emg">学习</span>（源 MAC 入表）、<span class="emg">转发</span>（查表命中定向发出）、<span class="emg">泛洪</span>（未知单播/广播撒向所有口）、<span class="emg">过滤</span>（目的在接收端口就丢）。交换机每收一帧必做「学源 + 查目的」，去向必是<b>转发 / 泛洪 / 过滤</b>三者之一 —— 这就是二层转发的全部秘密。', run:async t => {
+    { text:'<b>四大动作凑齐：</b><span class="emg">学习</span>（源 MAC 入表）、<span class="emg">转发</span>（查表命中定向发出）、<span class="emg">泛洪</span>（未知单播/广播撒向所有口）、<span class="emg">过滤</span>（目的在接收端口就丢）。也看清了两代设备的分野：<b>Hub 只会无脑复制</b>（全端口同一冲突域，越挂越卡），<b>交换机会学习、查表、精确转发</b>（每口独立冲突域）—— 这就是它取代 Hub 的原因。', run:async t => {
         document.querySelectorAll('#macRows tr[data-mac]').forEach(r => flash(r, 'row-hit', 1600));
         float(500, 44, '学习 · 转发 · 泛洪 · 过滤', '#34d399');
-        await sleep(1800); chk(t);
+        await sleep(1900); chk(t);
       }},
   ],
 }];
@@ -955,6 +982,7 @@ function resetScene(){
 function selectScenario(i){
   state.scenario = i;
   document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('active', k === i));
+  el('hubG').style.display = (i === 3) ? '' : 'none';   // Hub + 打印机仅场景 D 显示
   resetScene();
 }
 
