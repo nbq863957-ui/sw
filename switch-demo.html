@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>交换机工作原理 · 交互式动画演示</title>
+<style>
+  :root{
+    --bg:#070b16; --panel:rgba(255,255,255,.045); --line:rgba(255,255,255,.09);
+    --cyan:#22d3ee; --green:#34d399; --amber:#fbbf24; --red:#f87171;
+    --txt:#e2e8f0; --dim:#94a3b8;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    background:
+      radial-gradient(1200px 500px at 20% -10%, rgba(34,211,238,.10), transparent 60%),
+      radial-gradient(1000px 500px at 85% -20%, rgba(139,92,246,.10), transparent 60%),
+      var(--bg);
+    color:var(--txt); font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    min-height:100vh; padding:26px 22px 40px;
+  }
+  .wrap{max-width:1420px; margin:0 auto}
+  /* ---------- header ---------- */
+  header{text-align:center; margin-bottom:20px}
+  h1{
+    font-size:42px; letter-spacing:1px;
+    background:linear-gradient(90deg,#22d3ee,#a78bfa 45%,#34d399);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .sub{color:var(--dim); margin-top:8px; font-size:17px}
+  .sub b{color:var(--txt)}
+  /* ---------- scenario tabs ---------- */
+  .tabs{display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin:18px 0 16px}
+  .tab{
+    cursor:pointer; border:1px solid var(--line); background:var(--panel);
+    color:var(--txt); border-radius:12px; padding:12px 18px; font-size:16.5px;
+    transition:.2s; text-align:left;
+  }
+  .tab small{display:block; color:var(--dim); margin-top:4px; font-size:13.5px}
+  .tab:hover{border-color:rgba(34,211,238,.5)}
+  .tab.active{
+    border-color:var(--cyan); background:rgba(34,211,238,.10);
+    box-shadow:0 0 18px rgba(34,211,238,.22);
+  }
+  .tab.active small{color:#67e8f9}
+  /* ---------- layout ---------- */
+  .stage{display:grid; grid-template-columns:1.2fr 404px; gap:16px; align-items:stretch}
+  .stage > *{min-width:0}
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:16px 18px;
+  }
+  .topo{padding:10px 10px 6px}
+  .topo svg{width:100%; height:auto; display:block}
+  /* legend */
+  .legend{display:flex; gap:18px; justify-content:center; padding:8px 0 6px; font-size:14.5px; color:var(--dim); flex-wrap:wrap}
+  .legend i{display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:6px; vertical-align:-1px}
+  /* ---------- sidebar ---------- */
+  .side{display:flex; flex-direction:column; gap:14px}
+  .side h3{font-size:17px; margin-bottom:12px; display:flex; align-items:center; gap:9px}
+  .badge{
+    background:rgba(34,211,238,.15); color:#67e8f9; border:1px solid rgba(34,211,238,.35);
+    font-size:13.5px; border-radius:20px; padding:2px 11px;
+  }
+  .hint{color:var(--dim); font-size:13px; font-weight:400; margin-left:auto}
+  table{width:100%; border-collapse:collapse; font-size:15px}
+  th{color:var(--dim); text-align:left; font-weight:500; padding:7px 7px; border-bottom:1px solid var(--line); font-size:13.5px}
+  td{padding:9px 7px; border-bottom:1px dashed rgba(255,255,255,.06)}
+  .mono{font-family:Consolas,Menlo,monospace; letter-spacing:.3px}
+  .dyn{color:#a78bfa; font-size:13.5px}
+  .empty{color:#475569; text-align:center; padding:16px 0 !important; font-size:13.5px}
+  tr.row-in{animation:rowIn 1.1s ease}
+  tr.row-hit td{animation:rowHit 1.1s ease}
+  @keyframes rowIn{0%{background:rgba(52,211,153,.45)} 100%{background:transparent}}
+  @keyframes rowHit{0%,60%{background:rgba(34,211,238,.30)} 100%{background:transparent}}
+  .miss{animation:shake .5s ease}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
+  /* frame fields */
+  /* 控制播放卡 */
+  .ctrllegend{display:flex; flex-direction:column; gap:9px}
+  .cl-item{display:flex; align-items:center; gap:10px; font-size:14.5px; color:var(--dim)}
+  .cl-item i{display:inline-block; width:14px; height:14px; border-radius:50%; flex:none}
+  .cl-sub{margin-left:auto; font-family:Consolas,monospace; font-size:11.5px; color:#475569}
+  .keys{margin-top:12px; padding-top:11px; border-top:1px dashed var(--line); display:flex; flex-direction:column; gap:6px; font-size:13px; color:#64748b}
+  .keys b{color:#cbd5e1; font-weight:600}
+  /* ---------- 抓包面板 ---------- */
+  .cap{margin-top:16px}
+  .caplist{
+    flex:1; min-height:0; overflow-y:auto; border:1px solid var(--line); border-radius:10px;
+    background:rgba(2,6,23,.35);
+  }
+  .caplist::-webkit-scrollbar{width:7px}
+  .caplist::-webkit-scrollbar-thumb{background:#1e293b; border-radius:3px}
+  .caplist .cap-empty{padding:18px 12px; color:#475569; font-size:12.5px; text-align:center}
+  .caplist .caprow{padding:8px 10px; border-bottom:1px dashed var(--line); cursor:pointer; transition:background .15s}
+  .caplist .caprow:hover{background:rgba(148,163,184,.08)}
+  .caplist .caprow.cap-sel{background:rgba(56,189,248,.12); border-left:3px solid #38bdf8; padding-left:7px}
+  .caplist .cap-flash{background:rgba(56,189,248,.25)}
+  .cr-top{display:flex; align-items:baseline; gap:8px}
+  .cr-no{color:#64748b; font-size:11.5px}
+  .cr-proto{font-weight:700; font-size:12.5px}
+  .pr-arp{color:var(--amber)}
+  .pr-ip{color:#7dd3fc}
+  .cr-len{margin-left:auto; color:#64748b; font-size:11px}
+  .cr-path{font-family:Consolas,Menlo,monospace; font-size:12px; color:#94a3b8; margin-top:3px}
+  .cinfo{font-size:12.5px; color:#cbd5e1; margin-top:3px}
+  tr.caprow{cursor:pointer}
+  tr.caprow:hover{background:rgba(255,255,255,.05)}
+  tr.caprow.cap-sel{background:rgba(34,211,238,.14)}
+  tr.cap-in{animation:rowIn 1s ease}
+  tr.cap-flash td{animation:rowHit .9s ease}
+  .cap-tag{font-weight:700}
+  .capdetail{margin-top:10px; background:rgba(2,8,20,.55); border:1px solid var(--line); border-radius:10px; padding:10px 14px; min-height:60px; max-height:240px; overflow-y:auto}
+  .cd{padding:1.5px 0; font-family:Consolas,Menlo,monospace; font-size:12.5px; animation:cdIn .35s ease both}
+  @keyframes cdIn{from{opacity:0; transform:translateX(-8px)} to{opacity:1; transform:none}}
+  .cd.l1{color:#f1f5f9; font-weight:700; font-size:13px}
+  .cd.l2{color:#7dd3fc; font-weight:700; margin-top:4px}
+  .cd.l3{color:#94a3b8; padding-left:18px}
+  .cd .who{color:#64748b}
+  .cd b{color:#e2e8f0}
+  .cd-tip{color:#475569; font-size:13px; padding:4px 0}
+  /* ---------- 场景解说（交换机正下方） ---------- */
+  .narrbox{
+    margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);
+    display:flex; gap:14px; align-items:center; flex-wrap:wrap;
+  }
+  .stepchip{
+    flex-shrink:0; text-align:center; border:1px solid rgba(167,139,250,.4);
+    background:rgba(167,139,250,.10); color:#c4b5fd; border-radius:12px;
+    padding:11px 14px; font-size:14.5px; line-height:1.55; min-width:126px;
+  }
+  .narrtext{flex:1; font-size:18.5px; line-height:1.8; min-width:0; min-height:3.6em}
+  .narrtext b{color:#7dd3fc}
+  .narrtext .em{color:var(--amber)} .narrtext .emg{color:var(--green)}
+  /* ---------- 播放控制（侧栏卡内） ---------- */
+  .ctrlbtns{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:13px}
+  .ctrlbtns .btn{padding:9px 14px; font-size:14.5px}
+  .ctrlbtns select{flex:1; min-width:0; padding:9px 8px; font-size:14px}
+  button.btn{
+    cursor:pointer; border:1px solid var(--line); background:var(--panel); color:var(--txt);
+    border-radius:10px; padding:11px 20px; font-size:15.5px; transition:.2s;
+  }
+  button.btn:hover{border-color:rgba(34,211,238,.6); box-shadow:0 0 12px rgba(34,211,238,.18)}
+  button.btn.primary{border-color:rgba(34,211,238,.55); background:rgba(34,211,238,.13); color:#a5f3fc}
+  button.btn:disabled{opacity:.4; cursor:not-allowed; box-shadow:none}
+  select{
+    background:#0f172a; color:var(--txt); border:1px solid var(--line); border-radius:10px;
+    padding:11px 10px; font-size:15px; cursor:pointer;
+  }
+  .dots{display:flex; gap:6px; margin-top:8px}
+  .dots i{width:8px; height:8px; border-radius:50%; background:#1e293b; transition:.3s}
+  .dots i.done{background:rgba(34,211,238,.45)}
+  .dots i.cur{background:var(--cyan); box-shadow:0 0 8px rgba(34,211,238,.8)}
+  /* ---------- info cards ---------- */
+  .infos{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:20px}
+  .info{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px}
+  .info h4{font-size:16.5px; margin-bottom:11px; color:#7dd3fc}
+  .info p, .info li{font-size:14px; color:var(--dim); line-height:1.9}
+  .info ul{padding-left:17px}
+  .info b{color:var(--txt); font-weight:600}
+  footer{text-align:center; color:#475569; font-size:13px; margin-top:22px}
+  @media (max-width:1120px){
+    .stage{grid-template-columns:1fr}
+    .infos{grid-template-columns:1fr 1fr}
+  }
+  @media (max-width:640px){
+    .infos{grid-template-columns:1fr}
+    .narrbox{flex-direction:column; align-items:stretch}
+  }
+  /* ---------- svg animations ---------- */
+  .cable{stroke:#263352; stroke-width:4}
+  .cable.hot{stroke:#0891b2}
+  .cable-glow{stroke:var(--cyan); stroke-width:9; opacity:0; transition:opacity .18s; filter:url(#glowC)}
+  .cable-glow.on{opacity:.85}
+  .port{fill:#16203a; stroke:#3b4a6b; stroke-width:2; transition:.15s}
+  .port.led{fill:var(--green); stroke:#a7f3d0; filter:url(#glowG)}
+  .screen{fill:#0c1428; stroke:#324567; stroke-width:2; transition:.2s}
+  .screen.recv{stroke:var(--green); filter:url(#glowG)}
+  .screen.drop{stroke:var(--red); filter:url(#glowR)}
+  .pkt{transition:opacity .13s linear; filter:url(#glowC)}
+  .pkt.b{filter:url(#glowA)}
+  .pkt.g{filter:url(#glowG)}
+  .plabel{fill:#e2e8f0; font-size:16px; font-weight:600; font-family:Consolas,Menlo,monospace; text-anchor:middle}
+  .float{font-size:17.5px; font-weight:700; text-anchor:middle; font-family:"Microsoft YaHei",sans-serif}
+  .ring{fill:none; stroke:var(--amber); stroke-width:3.5}
+  .bdg rect{fill:rgba(10,16,32,.92); stroke-width:2; rx:10}
+  .bdg text{fill:#f1f5f9; font-size:17px; font-weight:700; text-anchor:middle; font-family:"Microsoft YaHei",sans-serif}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>交换机是如何工作的？</h1>
+    <div class="sub">一场以太网帧的旅程 —— <b>学习 · 泛洪 · 转发 · 过滤</b> · 纯前端动画模拟</div>
+    <div class="sub" style="margin-top:4px">拓扑：<b>3 台 PC + 1 台二层交换机</b>（同网段 192.168.1.0/24）</div>
+  </header>
+
+  <!-- 场景切换 -->
+  <div class="tabs" id="tabs"></div>
+
+  <div class="stage">
+    <!-- 拓扑图 -->
+    <div class="card topo">
+      <svg id="svg" viewBox="0 0 1000 620" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="gU" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#67e8f9"/><stop offset="1" stop-color="#0284c7"/>
+          </linearGradient>
+          <linearGradient id="gB" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#fde68a"/><stop offset="1" stop-color="#d97706"/>
+          </linearGradient>
+          <linearGradient id="gG" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#6ee7b7"/><stop offset="1" stop-color="#059669"/>
+          </linearGradient>
+          <linearGradient id="gSw" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#1e293b"/><stop offset="1" stop-color="#0f172a"/>
+          </linearGradient>
+          <filter id="glowC" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glowG" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glowA" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glowR" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M40 0H0V40" fill="none" stroke="rgba(148,163,184,.06)" stroke-width="1"/>
+          </pattern>
+        </defs>
+
+        <rect width="1000" height="620" fill="url(#grid)"/>
+
+        <!-- 网线（底层暗线 + 发光层） -->
+        <line id="cable0" class="cable" x1="140" y1="228" x2="405" y2="420"/>
+        <line id="cable1" class="cable" x1="500" y1="228" x2="500" y2="420"/>
+        <line id="cable2" class="cable" x1="860" y1="228" x2="595" y2="420"/>
+        <line id="cg0" class="cable-glow" x1="140" y1="228" x2="405" y2="420"/>
+        <line id="cg1" class="cable-glow" x1="500" y1="228" x2="500" y2="420"/>
+        <line id="cg2" class="cable-glow" x1="860" y1="228" x2="595" y2="420"/>
+
+        <!-- ===== PC1 ===== -->
+        <g>
+          <rect x="78" y="56" width="124" height="78" rx="10" fill="#0e1830" stroke="#334765" stroke-width="2.5"/>
+          <rect id="screen0" class="screen" x="87" y="65" width="106" height="60" rx="6"/>
+          <text x="140" y="96" fill="#7dd3fc" font-size="16" font-weight="700" text-anchor="middle" font-family="Consolas,monospace">PC1</text>
+          <text x="140" y="118" fill="#475569" font-size="13" text-anchor="middle" font-family="Consolas,monospace">.10</text>
+          <rect x="124" y="134" width="32" height="11" fill="#1e293b"/>
+          <rect x="102" y="145" width="76" height="9" rx="3" fill="#243044"/>
+          <text x="140" y="184" fill="#e2e8f0" font-size="21" font-weight="700" text-anchor="middle">PC1</text>
+          <text x="140" y="206" fill="#94a3b8" font-size="14.5" text-anchor="middle" font-family="Consolas,monospace">192.168.1.10</text>
+          <text x="140" y="224" fill="#64748b" font-size="13" text-anchor="middle" font-family="Consolas,monospace">AA:AA:AA:AA:AA:AA</text>
+        </g>
+        <!-- ===== PC2 ===== -->
+        <g>
+          <rect x="438" y="56" width="124" height="78" rx="10" fill="#0e1830" stroke="#334765" stroke-width="2.5"/>
+          <rect id="screen1" class="screen" x="447" y="65" width="106" height="60" rx="6"/>
+          <text x="500" y="96" fill="#7dd3fc" font-size="16" font-weight="700" text-anchor="middle" font-family="Consolas,monospace">PC2</text>
+          <text x="500" y="118" fill="#475569" font-size="13" text-anchor="middle" font-family="Consolas,monospace">.20</text>
+          <rect x="484" y="134" width="32" height="11" fill="#1e293b"/>
+          <rect x="462" y="145" width="76" height="9" rx="3" fill="#243044"/>
+          <text x="500" y="184" fill="#e2e8f0" font-size="21" font-weight="700" text-anchor="middle">PC2</text>
+          <text x="500" y="206" fill="#94a3b8" font-size="14.5" text-anchor="middle" font-family="Consolas,monospace">192.168.1.20</text>
+          <text x="500" y="224" fill="#64748b" font-size="13" text-anchor="middle" font-family="Consolas,monospace">BB:BB:BB:BB:BB:BB</text>
+        </g>
+        <!-- ===== PC3 ===== -->
+        <g>
+          <rect x="798" y="56" width="124" height="78" rx="10" fill="#0e1830" stroke="#334765" stroke-width="2.5"/>
+          <rect id="screen2" class="screen" x="807" y="65" width="106" height="60" rx="6"/>
+          <text x="860" y="96" fill="#7dd3fc" font-size="16" font-weight="700" text-anchor="middle" font-family="Consolas,monospace">PC3</text>
+          <text x="860" y="118" fill="#475569" font-size="13" text-anchor="middle" font-family="Consolas,monospace">.30</text>
+          <rect x="844" y="134" width="32" height="11" fill="#1e293b"/>
+          <rect x="822" y="145" width="76" height="9" rx="3" fill="#243044"/>
+          <text x="860" y="184" fill="#e2e8f0" font-size="21" font-weight="700" text-anchor="middle">PC3</text>
+          <text x="860" y="206" fill="#94a3b8" font-size="14.5" text-anchor="middle" font-family="Consolas,monospace">192.168.1.30</text>
+          <text x="860" y="224" fill="#64748b" font-size="13" text-anchor="middle" font-family="Consolas,monospace">CC:CC:CC:CC:CC:CC</text>
+        </g>
+
+        <!-- ===== 交换机 ===== -->
+        <g>
+          <rect x="350" y="424" width="300" height="112" rx="12" fill="url(#gSw)" stroke="#3b4a6b" stroke-width="2.5"/>
+          <circle class="port" id="port0" cx="405" cy="424" r="8.5"/>
+          <circle class="port" id="port1" cx="500" cy="424" r="8.5"/>
+          <circle class="port" id="port2" cx="595" cy="424" r="8.5"/>
+          <text x="405" y="454" fill="#94a3b8" font-size="14" text-anchor="middle" font-family="Consolas,monospace">E0/1</text>
+          <text x="500" y="454" fill="#94a3b8" font-size="14" text-anchor="middle" font-family="Consolas,monospace">E0/2</text>
+          <text x="595" y="454" fill="#94a3b8" font-size="14" text-anchor="middle" font-family="Consolas,monospace">E0/3</text>
+          <text x="500" y="494" fill="#e2e8f0" font-size="23" font-weight="700" text-anchor="middle">SW-1</text>
+          <text x="500" y="515" fill="#64748b" font-size="12.5" text-anchor="middle" letter-spacing="2.5" font-family="Consolas,monospace">L2 ETHERNET SWITCH</text>
+          <text x="500" y="531" fill="#475569" font-size="12" text-anchor="middle" font-family="Consolas,monospace">每端口独立冲突域 · 全双工</text>
+        </g>
+
+        <!-- 动画层：泛洪波纹 / 数据包 / 漂浮文字 / 决策徽标 -->
+        <g id="fx"></g>
+        <g id="packets"></g>
+      </svg>
+      <!-- 场景解说（交换机正下方） -->
+      <div class="narrbox">
+        <div class="stepchip" id="stepChip">场景 A<br>准备开始</div>
+        <div style="flex:1; min-width:0">
+          <div class="narrtext" id="narrText">点击右侧「控制播放」中的播放按钮，或直接切换场景，动画将逐步演示交换机收到每一个帧时的完整决策过程。</div>
+          <div class="dots" id="dots"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 侧栏 -->
+    <div class="side">
+      <div class="card" id="macCard">
+        <h3>MAC 地址表 <span class="badge" id="macCount">0</span><span class="hint">交换机自动学习 · CAM 表</span></h3>
+        <table>
+          <thead><tr><th>MAC 地址</th><th>出端口</th><th>类型</th></tr></thead>
+          <tbody id="macRows"><tr class="empty" id="macEmpty"><td colspan="3">（表是空的 —— 等着帧来敲门）</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="card" id="ctrlCard">
+        <h3>控制播放 <span class="hint">帧类型图例 + 快捷键</span></h3>
+        <div class="ctrlbtns">
+          <button class="btn primary" id="btnPlay">播放</button>
+          <button class="btn" id="btnPrev" title="回到上一步开始时的状态（← 键）">上一步</button>
+          <button class="btn" id="btnNext" title="执行当前步并进入下一步（→ 键）">下一步</button>
+          <button class="btn" id="btnReset">重置</button>
+          <select id="selSpeed">
+            <option value="0.5" selected>0.5x 慢速</option>
+            <option value="1">1x 正常</option>
+            <option value="2">2x 快速</option>
+          </select>
+        </div>
+        <div class="ctrllegend">
+          <div class="cl-item"><i style="background:linear-gradient(90deg,#67e8f9,#0284c7)"></i>单播帧</div>
+          <div class="cl-item"><i style="background:linear-gradient(90deg,#fde68a,#d97706)"></i>广播帧<span class="cl-sub">FF:FF:FF:FF:FF:FF</span></div>
+          <div class="cl-item"><i style="background:linear-gradient(90deg,#6ee7b7,#059669)"></i>应答帧</div>
+        </div>
+        <div class="keys">
+          <div><b>空格</b> 播放 / 暂停</div>
+          <div><b>→</b> 下一步 &nbsp;·&nbsp; <b>←</b> 上一步</div>
+          <div><b>R</b> 重置</div>
+        </div>
+      </div>
+
+      <div class="card" style="flex:1; display:flex; flex-direction:column; min-height:0">
+        <h3>抓包列表 <span class="badge" id="capCount">0</span><span class="hint">点击行看帧详情</span></h3>
+        <div class="caplist" id="capList"><div class="cap-empty">（尚无捕获 —— 等第一帧上线）</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 帧详情（Wireshark 风格逐字段解析） -->
+  <div class="card cap">
+    <h3>帧详情 <span class="hint">Wireshark 风格逐字段解析 · 点击右侧抓包列表中的任意行回看</span></h3>
+    <div class="capdetail" id="capDetail"><div class="cd-tip">↑ 点击右侧「抓包列表」中的任意行，这里会逐字段展开该帧</div></div>
+  </div>
+
+  <!-- 知识卡片 -->
+  <div class="infos">
+    <div class="info">
+      <h4>交换机的四大动作</h4>
+      <ul>
+        <li><b>① 学习</b>：记录「源 MAC ↔ 进入端口」到 MAC 表；</li>
+        <li><b>② 转发</b>：目的 MAC 查表命中 → 从对应端口定向发出；</li>
+        <li><b>③ 泛洪</b>：未知单播 / 广播 → 复制到除接收口外的所有端口；</li>
+        <li><b>④ 过滤</b>：目的 MAC 就在接收端口上 → 不转发（另有 FCS 坏帧丢弃）。</li>
+      </ul>
+    </div>
+    <div class="info">
+      <h4>为什么要泛洪？</h4>
+      <p>交换机刚开机时 MAC 表是<b>空的</b>。它靠「泛洪 + 接收方回应」来学习：先把帧撒向所有端口，等对方回帧时再从<b>源 MAC</b> 学到路径。泛洪只发生在<b>同一广播域</b>（同一 VLAN）内，且接收端口不会发回去。</p>
+    </div>
+    <div class="info">
+      <h4>免费 ARP（Gratuitous ARP）</h4>
+      <p>设备<b>刚接入网络</b>时主动广播：发送方 IP = 目标 IP = <b>自己</b>。作用：① <b>检测 IP 地址冲突</b>（有人应答就说明 IP 被占）；② 让交换机和邻居<b>立刻学到自己的 MAC</b>（主备切换 / 虚拟机迁移后也用它刷新全网 ARP 缓存）。</p>
+    </div>
+    <div class="info">
+      <h4>交换机 vs 集线器</h4>
+      <p><b>集线器（Hub）</b>：物理层设备，所有端口共享一个冲突域，比特流无脑广播，半双工，靠 CSMA/CD 避让冲突。<br><b>交换机（Switch）</b>：数据链路层设备，<b>每个端口一个独立冲突域</b>，全双工同时收发，按 MAC 表精确转发，带宽独享。</p>
+    </div>
+  </div>
+
+  <footer>本页为纯前端交互演示 · 单文件无依赖 · 帧流动画为行为模拟，用于理解二层转发原理</footer>
+</div>
+
+<script>
+/* ============================================================
+   数据定义
+============================================================ */
+const PCS = [
+  { name:'PC1', cx:140, mac:'AA:AA:AA:AA:AA:AA', ip:'192.168.1.10' },
+  { name:'PC2', cx:500, mac:'BB:BB:BB:BB:BB:BB', ip:'192.168.1.20' },
+  { name:'PC3', cx:860, mac:'CC:CC:CC:CC:CC:CC', ip:'192.168.1.30' },
+];
+const PORTS = [ {x:405,y:418,label:'E0/1'}, {x:500,y:418,label:'E0/2'}, {x:595,y:418,label:'E0/3'} ];
+const SWITCH_C = { x:500, y:480 };
+
+/* ============================================================
+   工具
+============================================================ */
+const el = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs){
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  return n;
+}
+
+let runToken = 0;
+const state = { playing:false, stepIdx:0, scenario:0, speed:0.5 };
+
+function chk(t){ if (t !== runToken) throw { aborted:true }; }
+function sleep(ms){
+  const t = runToken;
+  return new Promise((res, rej) => setTimeout(() => t === runToken ? res() : rej({ aborted:true }), ms / state.speed));
+}
+function flash(node, cls, ms){
+  node.classList.add(cls);
+  setTimeout(() => node.classList.remove(cls), (ms || 1000) / Math.max(state.speed, .5));
+}
+
+/* ---------- 日志（已被抓包列表取代，保留空实现以免影响调用点） ---------- */
+function log(html){ }
+
+/* ---------- MAC 表 ---------- */
+function clearTable(silent){
+  el('macRows').innerHTML = '<tr class="empty" id="macEmpty"><td colspan="3">（表是空的 —— 等着帧来敲门）</td></tr>';
+  el('macCount').textContent = '0';
+  if (!silent) log('<span class="lc">MAC 表已清空，重新演示</span>');
+}
+function learn(mac, port){
+  const tb = el('macRows');
+  const exist = tb.querySelector(`tr[data-mac="${mac}"]`);
+  if (exist){ flash(exist, 'row-hit'); return; }
+  const empty = el('macEmpty'); if (empty) empty.remove();
+  const row = document.createElement('tr');
+  row.dataset.mac = mac;
+  row.innerHTML = `<td class="mono">${mac}</td><td class="mono">${port}</td><td class="dyn">动态</td>`;
+  tb.prepend(row);
+  flash(row, 'row-in');
+  el('macCount').textContent = tb.querySelectorAll('tr[data-mac]').length;
+  flash(el('macCard'), 'row-hit', 800);
+  log(`<span class="lg">学习</span> 源MAC ${mac} 来自 ${port} → 写入 MAC 表`);
+}
+function lookup(mac){
+  const row = el('macRows').querySelector(`tr[data-mac="${mac}"]`);
+  if (row){
+    flash(row, 'row-hit');
+    log(`<span class="lc">查表</span> 目的 ${mac} → <b>命中</b> ${row.children[1].textContent}，定向转发`);
+    return row.children[1].textContent;
+  }
+  flash(el('macCard'), 'miss');
+  if (mac === 'FF:FF:FF:FF:FF:FF')
+    log(`<span class="la">查表</span> 目的 FF:FF… → <b>广播地址</b>，与表无关 → 无条件泛洪`);
+  else
+    log(`<span class="la">查表</span> 目的 ${mac} → <b>未命中</b>（未知单播）`);
+  return null;
+}
+
+/* ---------- 帧字段高亮（帧结构卡已移除，保留空实现以兼容场景调用） ---------- */
+function frameHL(){}
+function frameClear(){}
+function fcsOK(){}
+
+/* ---------- SVG 动画 ---------- */
+function cableOn(i, on){
+  el('cg' + i).classList.toggle('on', on);
+  el('cable' + i).classList.toggle('hot', on);
+}
+function led(i){
+  const p = el('port' + i);
+  p.classList.add('led');
+  setTimeout(() => p.classList.remove('led'), 650 / state.speed);
+}
+function makePacket(type, label){
+  const g = svgEl('g', { class:'pkt ' + (type || '') });
+  g.appendChild(svgEl('circle', { r:20, fill:'rgba(34,211,238,.18)' }));
+  g.appendChild(svgEl('circle', { r:14, fill: type === 'b' ? 'url(#gB)' : type === 'g' ? 'url(#gG)' : 'url(#gU)' }));
+  if (label){
+    const t = svgEl('text', { x:0, y:40, class:'plabel' });
+    t.textContent = label;
+    g.appendChild(t);
+  }
+  return g;
+}
+function movePacket(from, to, opt = {}){
+  const t = runToken;
+  return new Promise((resolve, reject) => {
+    const g = makePacket(opt.type, opt.label);
+    el('packets').appendChild(g);
+    g.setAttribute('transform', `translate(${from.x},${from.y})`);
+    g.setAttribute('opacity', '0');
+    requestAnimationFrame(() => g.setAttribute('opacity', '1'));
+    if (opt.cable != null) cableOn(opt.cable, true);
+    const dur = Math.hypot(to.x - from.x, to.y - from.y) / (310 * state.speed) * 1000;
+    const t0 = performance.now();
+    function frame(now){
+      if (t !== runToken){
+        g.remove(); if (opt.cable != null) cableOn(opt.cable, false); reject({ aborted:true }); return;
+      }
+      const k = Math.min(1, (now - t0) / dur);
+      const e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      g.setAttribute('transform', `translate(${from.x + (to.x - from.x) * e},${from.y + (to.y - from.y) * e})`);
+      if (k < 1) requestAnimationFrame(frame);
+      else setTimeout(() => {
+        g.setAttribute('opacity', '0');
+        setTimeout(() => g.remove(), 140);
+        if (opt.cable != null) cableOn(opt.cable, false);
+        resolve();
+      }, 90 / state.speed);
+    }
+    requestAnimationFrame(frame);
+  });
+}
+/* PC(i) 的网卡位置 / 交换机端口 i */
+const pcPoint = i => ({ x:PCS[i].cx, y:230 });
+const portPoint = i => ({ x:PORTS[i].x, y:PORTS[i].y });
+
+function float(x, y, text, color){
+  const t = svgEl('text', { x, y, class:'float', fill:color });
+  t.textContent = text;
+  const a1 = svgEl('animate', { attributeName:'y', from:y, to:y - 38, dur:'1.5s', fill:'freeze' });
+  const a2 = svgEl('animate', { attributeName:'opacity', from:'1', to:'0', dur:'1.5s', fill:'freeze' });
+  t.appendChild(a1); t.appendChild(a2);
+  el('fx').appendChild(t);
+  setTimeout(() => t.remove(), 1600);
+}
+function ring(color){
+  const c = svgEl('circle', { cx:SWITCH_C.x, cy:SWITCH_C.y, r:20, class:'ring', stroke:color || '#fbbf24' });
+  const a1 = svgEl('animate', { attributeName:'r', from:20, to:155, dur:'0.9s', fill:'freeze' });
+  const a2 = svgEl('animate', { attributeName:'opacity', from:'.9', to:'0', dur:'0.9s', fill:'freeze' });
+  c.appendChild(a1); c.appendChild(a2);
+  el('fx').appendChild(c);
+  setTimeout(() => c.remove(), 1000);
+}
+function badge(text, color){
+  const t = runToken;
+  return new Promise(resolve => {
+    const g = svgEl('g', { class:'bdg' });
+    const w = text.length * 17 + 56;
+    g.appendChild(svgEl('rect', { x:500 - w/2, y:550, width:w, height:40, rx:10, stroke:color }));
+    const tx = svgEl('text', { x:500, y:577, fill:color });
+    tx.textContent = text;
+    g.appendChild(tx);
+    g.setAttribute('opacity', '0');
+    el('fx').appendChild(g);
+    requestAnimationFrame(() => g.setAttribute('opacity', '1'));
+    setTimeout(() => {
+      g.setAttribute('opacity', '0');
+      setTimeout(() => g.remove(), 200);
+      t === runToken ? resolve() : reject({ aborted:true });
+    }, 1900 / state.speed);
+  });
+}
+function pcFlash(i, kind, text){
+  const s = el('screen' + i);
+  s.classList.add(kind === 'recv' ? 'recv' : 'drop');
+  setTimeout(() => s.classList.remove('recv', 'drop'), 1100 / state.speed);
+  float(PCS[i].cx, 44, text, kind === 'recv' ? '#34d399' : '#f87171');
+}
+
+/* ============================================================
+   场景脚本
+============================================================ */
+const A = 'AA:AA:AA:AA:AA:AA', B = 'BB:BB:BB:BB:BB:BB', C = 'CC:CC:CC:CC:CC:CC', FFF = 'FF:FF:FF:FF:FF:FF';
+const PRT = 'DD:DD:DD:DD:DD:DD'; // 假想的打印机（接在 E0/1 的 Hub 下）
+
+const scenarios = [
+{
+  name:'场景 A · 设备上线 · 免费ARP + MAC 学习',
+  desc:'新设备广播报到：学习源 MAC；广播帧无条件泛洪',
+  preseed(){ clearTable(true); },
+  steps:[
+    { text:'<b>PC1 是一台刚插上网线的新设备。</b>上线第一件事：发一个<span class="em">免费 ARP（Gratuitous ARP）</span>向全网"报到" —— <b>发送方 IP = 目标 IP = 自己（192.168.1.10）</b>，目的 MAC 是广播 FF:FF…。作用：<b>让交换机和邻居立刻学到自己的 MAC</b> + <b>检测 IP 冲突</b>。', run:async t => {
+        float(140, 44, '新设备上线 · 发免费ARP', '#fbbf24');
+        await sleep(2200); chk(t);
+      }},
+    { text:'免费 ARP 帧进入 <b>E0/1</b>。交换机收到任何帧的<b>第一件事都是学习</b>：帧来自 E0/1、源 MAC 是 AA… → 写入 MAC 表「<b>AA… ↔ E0/1</b>」。<b>学习只看源，与目的无关</b> —— 新设备开口第一帧，位置就被记住了。', run:async t => {
+        log(`<span class="lc">E0/1</span> 收到帧: Src=${A} Dst=${FFF} <span class="la">(免费ARP·广播)</span>`);
+        CAPR.aFree = cap({ dir:'E0/1 ▸ 入', src:A, dst:FFF, proto:'ARP', pcls:'pr-arp', len:'60B',
+          info:'免费ARP 宣告: 我是 192.168.1.10 / AA:…',
+          detail: arpDetail(60, 'E0/1', A, 'PC1', '1 (request)', ' · 免费ARP: Sender IP = Target IP', A, '192.168.1.10', '00:00:00:00:00:00', '192.168.1.10') });
+        await movePacket(pcPoint(0), portPoint(0), { cable:0, type:'b', label:'免费ARP' });
+        chk(t); led(0);
+        learn(A, 'E0/1');
+        await sleep(900); chk(t);
+      }},
+    { text:'再查目的 MAC：FF:FF… 是<b>广播地址</b> → <span class="em">无条件泛洪</span>（跟表里有没有记录无关）。交换机把这份"报到声明"复制到 E0/2、E0/3（接收端口 E0/1 除外）。', run:async t => {
+        lookup(FFF);
+        await badge('广播帧 → 无条件泛洪', '#fbbf24'); chk(t);
+        ring('#fbbf24');
+        await Promise.all([
+          movePacket(portPoint(1), pcPoint(1), { cable:1, type:'b', label:'免费ARP' }),
+          movePacket(portPoint(2), pcPoint(2), { cable:2, type:'b', label:'免费ARP' }),
+        ]);
+        chk(t);
+        annotate(CAPR.aFree, '已泛洪 → E0/2,E0/3', '#fbbf24');
+      }},
+    { text:'<b>PC2 / PC3 检查免费 ARP</b>：ARP 缓存里没有 192.168.1.10 的记录 → 忽略；有旧记录则更新（如虚拟机迁移后 MAC 变了）。若真有别的设备也在用这个 IP，就会应答抗议 → <b>IP 冲突检测</b>。本例无冲突。', run:async t => {
+        pcFlash(1, 'drop', '记录更新/忽略');
+        pcFlash(2, 'drop', '记录更新/忽略');
+        await sleep(1900); chk(t);
+      }},
+    { text:'设备"报到"完成：交换机学到了 <b>AA…</b>，PC2/PC3 的 ARP 缓存也认识了这个新邻居。<b>但注意 —— 真实环境里此刻 PC1 还不能直接给 PC2 发数据</b>：它只知道 IP 192.168.1.20，还不知道 BB… 这个 MAC。下一幕看首次通信必须走的 <span class="em">ARP 解析</span>。', run:async t => {
+        document.querySelectorAll('#macRows tr[data-mac]').forEach(r => flash(r, 'row-hit', 1400));
+        float(500, 44, '报到完成', '#34d399');
+        await sleep(1800); chk(t);
+      }},
+  ],
+},
+{
+  name:'场景 B · 首次通信 · ARP 解析 + 转发',
+  desc:'没 ARP 就不能通信：广播请求 → 单播应答（顺带学到 BB）→ 定向转发',
+  preseed(){ clearTable(true); learn(A, 'E0/1'); log('<span class="lc">沿用场景 A</span> 的表项 AA…↔E0/1'); },
+  steps:[
+    { text:'<b>PC1 要真正访问 PC2（192.168.1.20）了。</b>它先查本机 <span class="em">ARP 缓存</span> —— 里面只有自己免费 ARP 的记录，<b>查不到 192.168.1.20 的 MAC</b>。IP 数据包必须封装成以太网帧才能上线，帧头必须有目的 MAC → <b>没有 ARP 解析，就没有通信</b>。第一步：广播 ARP 请求「谁是 192.168.1.20？请告诉 192.168.1.10」。', run:async t => {
+        float(140, 44, '查 ARP 缓存: .20 未解析', '#fbbf24');
+        await sleep(2300); chk(t);
+      }},
+    { text:'ARP 请求帧（目的 MAC = FF:FF…，<b>广播</b>）进入 <b>E0/1</b>。交换机照例学习（AA… 已在表 → 刷新老化）；查目的：FF:FF… 是广播地址 → <span class="em">无条件泛洪</span>，复制到 E0/2、E0/3。', run:async t => {
+        log(`<span class="lc">E0/1</span> 收到帧: Src=${A} Dst=${FFF} <span class="la">(ARP请求·广播)</span>`);
+        CAPR.bReq = cap({ dir:'E0/1 ▸ 入', src:A, dst:FFF, proto:'ARP', pcls:'pr-arp', len:'42B',
+          info:'ARP 请求: 谁是 192.168.1.20? 告诉 192.168.1.10',
+          detail: arpDetail(42, 'E0/1', A, 'PC1', '1 (request)', '', A, '192.168.1.10', '00:00:00:00:00:00', '192.168.1.20') });
+        await movePacket(pcPoint(0), portPoint(0), { cable:0, type:'b', label:'ARP 请求' });
+        chk(t); led(0);
+        learn(A, 'E0/1');
+        lookup(FFF);
+        await badge('广播帧 → 无条件泛洪', '#fbbf24'); chk(t);
+        ring('#fbbf24');
+        await Promise.all([
+          movePacket(portPoint(1), pcPoint(1), { cable:1, type:'b', label:'ARP 请求' }),
+          movePacket(portPoint(2), pcPoint(2), { cable:2, type:'b', label:'ARP 请求' }),
+        ]);
+        chk(t);
+        annotate(CAPR.bReq, '已泛洪 → E0/2,E0/3', '#fbbf24');
+      }},
+    { text:'<b>广播送达所有人，被点名的只有一个：</b>PC3 发现问的不是自己 → <span class="em">静默丢弃</span>；PC2 发现问的正是自己 → <span class="emg">单播应答</span>「192.168.1.20 在 BB:…」，目的 MAC 填 AA…（请求帧里就带着发送方 MAC，回给谁一目了然）。', run:async t => {
+        pcFlash(2, 'drop', '问的不是我 → 忽略');
+        pcFlash(1, 'recv', '问的是我 → 单播应答');
+        await sleep(2000); chk(t);
+      }},
+    { text:'应答帧（目的 AA…，源 BB…）进入 <b>E0/2</b> → 交换机<b>学习 BB…↔E0/2</b>（ARP 应答的源 MAC 让交换机顺带认识了 PC2）；再查目的 AA… <b>命中 E0/1</b> → 只从 E0/1 <span class="emg">定向转发</span>。', run:async t => {
+        log(`<span class="lc">E0/2</span> 收到帧: Src=${B} Dst=${A} (单播·ARP应答)`);
+        CAPR.bRep = cap({ dir:'E0/2 ▸ 入', src:B, dst:A, proto:'ARP', pcls:'pr-arp', len:'42B',
+          info:'ARP 应答: 192.168.1.20 位于 BB:…',
+          detail: arpDetail(42, 'E0/2', B, 'PC2', '2 (reply)', '', B, '192.168.1.20', A, '192.168.1.10') });
+        await movePacket(pcPoint(1), portPoint(1), { cable:1, type:'g', label:'ARP 应答' });
+        chk(t); led(1);
+        learn(B, 'E0/2');
+        const r = lookup(A);
+        if (r){ await badge('AA… 命中 → 只从 E0/1 转发', '#22d3ee'); }
+        if (CAPR.bRep) annotate(CAPR.bRep, '查表命中 → 仅从 E0/1 转发', '#22d3ee');
+        chk(t);
+        await movePacket(portPoint(0), pcPoint(0), { cable:0, type:'g', label:'ARP 应答' });
+        chk(t); pcFlash(0, 'recv', '拿到 MAC 了');
+      }},
+    { text:'PC1 的 ARP 缓存补全：「192.168.1.20 ↔ BB:…」。<b>现在才允许发真正的数据帧</b>：目的 MAC = BB…、源 MAC = AA…，载荷 "Hello, Switch!"。', run:async t => {
+        float(140, 44, 'ARP 缓存就绪 → 发数据帧', '#7dd3fc');
+        await sleep(1700); chk(t);
+      }},
+    { text:'数据帧进入 E0/1 → 学习（AA… 刷新）→ 查 BB… <b>命中 E0/2</b> → <span class="emg">只从 E0/2 转发</span>。全程没有多余的包，E0/3 安静 —— 这就是表齐全后的<span class="emg">精确转发</span>。', run:async t => {
+        log(`<span class="lc">E0/1</span> 收到帧: Src=${A} Dst=${B} (单播)`);
+        CAPR.bData = cap({ dir:'E0/1 ▸ 入', src:A, dst:B, proto:'IPv4', pcls:'pr-ip', len:'98B',
+          info:'PC1 → PC2 数据帧 · 载荷 "Hello, Switch!"',
+          detail: ipDetail(98, 'E0/1', B, 'PC2', A, 'PC1', '192.168.1.10', '192.168.1.20', '72 字节（模拟应用数据 "Hello, Switch!"）') });
+        await movePacket(pcPoint(0), portPoint(0), { cable:0, type:'u', label:'PC1 → PC2' });
+        chk(t); led(0);
+        learn(A, 'E0/1');
+        const r = lookup(B);
+        if (r){ await badge('BB… 命中 → 只从 E0/2 转发', '#22d3ee'); }
+        if (CAPR.bData) annotate(CAPR.bData, '查表命中 → 仅从 E0/2 转发', '#22d3ee');
+        chk(t);
+        await movePacket(portPoint(1), pcPoint(1), { cable:1, type:'u', label:'PC1 → PC2' });
+        chk(t); pcFlash(1, 'recv', '是发给我的 → 接收');
+      }},
+    { text:'<b>一次 ARP，两份收获：</b>PC1 解析到了 PC2 的 MAC；交换机从应答帧的源 MAC 学到了 BB…。至此 AA、BB 俱全，双向流量全部精确转发 —— 这就是真实网络"第一次通信"的完整链路：<b>免费ARP报到 → ARP请求(广播) → ARP应答(单播) → 数据帧(定向转发)</b>。', run:async t => {
+        document.querySelectorAll('#macRows tr[data-mac]').forEach(r => flash(r, 'row-hit', 1400));
+        float(500, 44, '真实通信闭环', '#34d399');
+        await sleep(1900); chk(t);
+      }},
+  ],
+},
+{
+  name:'场景 C · 表老化 → 未知单播泛洪',
+  desc:'交换机重启"失忆"而 ARP 缓存还在：未知单播泛洪 + 自愈',
+  preseed(){ clearTable(true); log('<span class="lr">设定</span> 交换机刚重启 · MAC 表为空（PC1 的 ARP 缓存仍有效）'); },
+  steps:[
+    { text:'<b>新设定：交换机断电重启，MAC 表被清空</b>（表项默认 300 秒老化，重启即"失忆"）。但 PC1 的 ARP 缓存还热着：「192.168.1.20 ↔ BB:…」。于是 PC1 <b>不做 ARP、直接发单播数据帧</b> —— 这种"交换机不认识目的 MAC"的单播帧，叫<span class="em">未知单播（Unknown Unicast）</span>。', run:async t => {
+        float(140, 44, '交换机重启 · 表已清空', '#f87171');
+        await sleep(2200); chk(t);
+      }},
+    { text:'帧进入 E0/1 → 交换机重新<b>学习</b> AA…↔E0/1；查目的 BB… —— <span class="em">未命中！</span>表里空空如也。对策：<b>未知单播 → 泛洪</b>，除接收口外全部复制发出。', run:async t => {
+        log(`<span class="lc">E0/1</span> 收到帧: Src=${A} Dst=${B} (单播)`);
+        CAPR.cUni = cap({ dir:'E0/1 ▸ 入', src:A, dst:B, proto:'IPv4', pcls:'pr-ip', len:'98B',
+          info:'PC1 → PC2 数据帧（MAC 表为空）',
+          detail: ipDetail(98, 'E0/1', B, 'PC2', A, 'PC1', '192.168.1.10', '192.168.1.20', '72 字节（模拟应用数据 "Hello, Switch!"）') });
+        await movePacket(pcPoint(0), portPoint(0), { cable:0, type:'u', label:'PC1 → PC2' });
+        chk(t); led(0);
+        learn(A, 'E0/1');
+        const r = lookup(B);
+        if (!r){ await badge('Dst BB… 未命中 → 泛洪!', '#fbbf24'); }
+        if (CAPR.cUni) annotate(CAPR.cUni, '未知单播 → 泛洪 E0/2,E0/3', '#fbbf24');
+        chk(t);
+      }},
+    { text:'交换机把帧<b>复制两份</b>，从 E0/2、E0/3 同时发出 —— PC2 和 PC3 都会收到。', run:async t => {
+        ring('#22d3ee');
+        await Promise.all([
+          movePacket(portPoint(1), pcPoint(1), { cable:1, type:'u', label:'PC1 → PC2' }),
+          movePacket(portPoint(2), pcPoint(2), { cable:2, type:'u', label:'PC1 → PC3' }),
+        ]);
+        chk(t);
+      }},
+    { text:'<b>接收方比对目的 MAC</b>：PC2 是自己 → <span class="emg">接收</span>；PC3 不是 → <span class="em">网卡直接丢弃</span>。泛洪浪费了 PC3 一点带宽，但保证帧一定可达 —— 这就是泛洪存在的意义：<b>用冗余换连通</b>。', run:async t => {
+        pcFlash(1, 'recv', '是发给我的 → 接收');
+        pcFlash(2, 'drop', '不是发给我的 → 丢弃');
+        await sleep(2000); chk(t);
+      }},
+    { text:'PC2 回包（目的 AA…，源 BB…）进入 <b>E0/2</b> → 交换机<b>学习 BB…↔E0/2</b> → 查 AA… <b>命中 E0/1</b> → 定向转发。MAC 表在一帧帧地自己长回来。', run:async t => {
+        log(`<span class="lc">E0/2</span> 收到帧: Src=${B} Dst=${A} (单播)`);
+        CAPR.cRep = cap({ dir:'E0/2 ▸ 入', src:B, dst:A, proto:'IPv4', pcls:'pr-ip', len:'98B',
+          info:'PC2 → PC1 回复帧',
+          detail: ipDetail(98, 'E0/2', A, 'PC1', B, 'PC2', '192.168.1.20', '192.168.1.10', '72 字节（模拟应用数据 "Hi, PC1!"）') });
+        await movePacket(pcPoint(1), portPoint(1), { cable:1, type:'g', label:'PC2 → PC1' });
+        chk(t); led(1);
+        learn(B, 'E0/2');
+        const r = lookup(A);
+        if (r){ await badge('AA… 命中 → 只从 E0/1 转发', '#22d3ee'); }
+        if (CAPR.cRep) annotate(CAPR.cRep, '查表命中 → 仅从 E0/1 转发', '#22d3ee');
+        chk(t);
+        await movePacket(portPoint(0), pcPoint(0), { cable:0, type:'g', label:'PC2 → PC1' });
+        chk(t);
+      }},
+    { text:'重启后只过了几帧，MAC 表就恢复齐全 —— 每一帧的<b>学习</b>都在填表，<b>泛洪</b>只是表没学全时的兜底。真实交换机就这样在「泛洪摸索 ↔ 精确转发」间自动切换，无需任何配置。', run:async t => {
+        document.querySelectorAll('#macRows tr[data-mac]').forEach(r => flash(r, 'row-hit', 1400));
+        float(500, 44, '自愈完成', '#34d399');
+        await sleep(1900); chk(t);
+      }},
+  ],
+},
+{
+  name:'场景 D · 过滤（不转发）',
+  desc:'目的 MAC 就在接收端口上：帧原地丢弃，不去打扰任何端口',
+  preseed(){ clearTable(true); learn(A, 'E0/1'); log('<span class="lc">沿用</span> 已学表项 AA…↔E0/1'); },
+  steps:[
+    { text:'<b>第四个动作 —— 过滤（Filtering）。</b>设定：E0/1 下还通过小 Hub 接了一台打印机（MAC = DD…），交换机早已学到「DD… ↔ E0/1」。<b>一个端口下可以挂多台设备</b>（经 Hub 或另一台交换机级联），所以 MAC 表里两条记录可以指向同一个端口。', run:async t => {
+        learn(PRT, 'E0/1');
+        log('<span class="lc">设定</span> E0/1 下经 Hub 还接了一台打印机 DD:…（已学习）');
+        await sleep(1700); chk(t);
+      }},
+    { text:'<b>PC1 给打印机发打印任务</b>：封装以太网帧 —— <b>目的 MAC = DD…（打印机）</b>、<b>源 MAC = AA…（PC1）</b>。注意：目的 MAC 不是广播，也不是未知 —— 它就在表里。', run:async t => {
+        frameHL('dst','src','type','data','fcs');
+        float(140, 44, 'PC1 → 打印机', '#7dd3fc');
+        await sleep(1600); chk(t);
+      }},
+    { text:'帧从 PC1 发出，进入 <b>E0/1 端口</b>。交换机照例先学习源 MAC（AA… 已在表中 → 刷新老化时间），然后<b>查目的 MAC</b>。', run:async t => {
+        frameClear();
+        log(`<span class="lc">E0/1</span> 收到帧: Src=${A} Dst=${PRT} (单播)`);
+        CAPR.dJob = cap({ dir:'E0/1 ▸ 入', src:A, dst:PRT, proto:'IPv4', pcls:'pr-ip', len:'98B',
+          info:'打印任务: PC1 → 打印机（同段线路）',
+          detail: ipDetail(98, 'E0/1', PRT, '打印机(Hub下)', A, 'PC1', '192.168.1.10', '192.168.1.99', '72 字节（模拟打印作业）') });
+        await movePacket(pcPoint(0), portPoint(0), { cable:0, type:'u', label:'PC1 → 打印机' });
+        chk(t); led(0); fcsOK();
+        learn(A, 'E0/1');
+        await sleep(700); chk(t);
+      }},
+    { text:'查表结果：DD… <b>命中 E0/1</b> —— 但出端口和<b>接收端口是同一个</b>！把帧再从 E0/1 发回去毫无意义（源和目的本就在同一段线路上）→ <span class="em">过滤：不转发，原地丢弃</span>。E0/2、E0/3 完全安静 —— 过滤的价值：<b>把无关流量彻底隔离</b>。', run:async t => {
+        const r = lookup(PRT);
+        if (r === 'E0/1'){
+          log(`<span class="lr">过滤</span> Dst ${PRT} 与接收端口 E0/1 <b>相同</b> → 不转发，直接丢弃`);
+          float(405, 396, '过滤', '#f87171');
+          await badge('目的就在接收端口 → 过滤(不转发)', '#f87171');
+        }
+        if (CAPR.dJob) annotate(CAPR.dJob, '目的=接收端口 → 过滤, 不转发', '#f87171');
+        chk(t);
+      }},
+    { text:'<b>四大动作凑齐：</b><span class="emg">学习</span>（源 MAC 入表）、<span class="emg">转发</span>（查表命中定向发出）、<span class="emg">泛洪</span>（未知单播/广播撒向所有口）、<span class="emg">过滤</span>（目的在接收端口就丢）。交换机每收一帧必做「学源 + 查目的」，去向必是<b>转发 / 泛洪 / 过滤</b>三者之一 —— 这就是二层转发的全部秘密。', run:async t => {
+        document.querySelectorAll('#macRows tr[data-mac]').forEach(r => flash(r, 'row-hit', 1600));
+        float(500, 44, '学习 · 转发 · 泛洪 · 过滤', '#34d399');
+        await sleep(1800); chk(t);
+      }},
+  ],
+}];
+
+/* ============================================================
+   播放引擎
+============================================================ */
+const tabsBox = el('tabs');
+scenarios.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.className = 'tab';
+  b.innerHTML = `${s.name}<small>${s.desc}</small>`;
+  b.onclick = () => selectScenario(i);
+  tabsBox.appendChild(b);
+});
+
+function renderDots(n, cur, done){
+  const d = el('dots'); d.innerHTML = '';
+  for (let i = 0; i < n; i++){
+    const dot = document.createElement('i');
+    if (i < cur) dot.className = 'done';
+    if (i === cur) dot.className = 'cur';
+    d.appendChild(dot);
+  }
+}
+function showStep(sc, idx){
+  const s = sc.steps[idx];
+  el('stepChip').innerHTML = `${sc.name.split('·')[0].trim()}<br>第 ${idx + 1} / ${sc.steps.length} 步`;
+  el('narrText').innerHTML = s.text;
+  renderDots(sc.steps.length, idx, false);
+}
+function showDone(sc){
+  el('stepChip').innerHTML = `${sc.name.split('·')[0].trim()}<br>演示完成`;
+  el('narrText').innerHTML = '<b>演示完成！</b>可切换其他场景观看，或点「重置」重播本场景。MAC 地址表保留了本场景学到的全部表项。';
+  renderDots(sc.steps.length, sc.steps.length, true);
+}
+function updButtons(){
+  const done = state.stepIdx >= scenarios[state.scenario].steps.length;
+  el('btnPlay').textContent = state.playing ? '暂停' : (done ? '重播' : '播放');
+  el('btnNext').disabled = done;
+  el('btnPrev').disabled = state.stepIdx <= 0 || !snapshots[state.stepIdx - 1];
+}
+
+function clearFx(){
+  el('packets').innerHTML = '';
+  el('fx').innerHTML = '';
+  [0,1,2].forEach(i => cableOn(i, false));
+  frameClear();
+}
+
+/* ---------- 步骤快照：支持「上一步」回退 ---------- */
+let snapshots = [];
+function captureState(){
+  return { mac: el('macRows').innerHTML, count: el('macCount').textContent, capN: capturedFrames.length };
+}
+function snapTo(i){ if (!snapshots[i]) snapshots[i] = captureState(); }
+function restoreTo(i){
+  const s = snapshots[i]; if (!s) return;
+  el('macRows').innerHTML = s.mac;
+  el('macCount').textContent = s.count;
+  capturedFrames = capturedFrames.slice(0, s.capN || 0);
+  capNo = s.capN || 0;
+  el('capCount').textContent = capNo;
+  const tb = el('capList');
+  tb.innerHTML = '';
+  if (capturedFrames.length){
+    capturedFrames.forEach((f, k) => tb.appendChild(buildCapRow(f, k + 1)));
+    tb.lastElementChild.classList.add('cap-sel');
+    renderDetail(capturedFrames[capturedFrames.length - 1].detail);
+    tb.scrollTop = tb.scrollHeight;
+  } else {
+    tb.innerHTML = CAP_EMPTY;
+    el('capDetail').innerHTML = CAP_TIP;
+  }
+  clearFx();
+}
+
+/* ---------- 抓包面板（Wireshark 风格） ---------- */
+let capNo = 0, capturedFrames = [];
+const CAPR = {};
+const CAP_EMPTY = '<div class="cap-empty">（尚无捕获 —— 等第一帧上线）</div>';
+const CAP_TIP = '<div class="cd-tip">↑ 点击右侧「抓包列表」中的任意行，这里会逐字段展开该帧</div>';
+function resetCap(){
+  capNo = 0; capturedFrames = [];
+  el('capList').innerHTML = CAP_EMPTY;
+  el('capCount').textContent = '0';
+  el('capDetail').innerHTML = CAP_TIP;
+}
+function shortMac(m){ return m.slice(0, 5) + '…' + m.slice(-5); }
+function buildCapRow(f, no){
+  const d = document.createElement('div');
+  d.className = 'caprow cap-in';
+  d.innerHTML = `<div class="cr-top"><span class="mono cr-no">#${no}</span><span class="cr-proto ${f.pcls || ''}">${f.proto}</span><span class="mono cr-len">${f.len}</span></div><div class="cr-path">${shortMac(f.src)} → ${shortMac(f.dst)}</div><div class="cinfo">${f.info}</div>`;
+  d.onclick = () => selectCap(d, f);
+  return d;
+}
+function cap(f){
+  const tb = el('capList');
+  const empty = tb.querySelector('.cap-empty'); if (empty) empty.remove();
+  capNo++;
+  const tr = buildCapRow(f, capNo);
+  tb.appendChild(tr);
+  capturedFrames.push(f);
+  selectCap(tr, f);
+  el('capCount').textContent = capNo;
+  tb.scrollTop = tb.scrollHeight;
+  return tr;
+}
+function selectCap(tr, f){
+  document.querySelectorAll('#capList .cap-sel').forEach(r => r.classList.remove('cap-sel'));
+  tr.classList.add('cap-sel');
+  renderDetail(f.detail);
+}
+function renderDetail(lines){
+  const d = el('capDetail'); d.innerHTML = '';
+  lines.forEach((l, i) => {
+    const div = document.createElement('div');
+    div.className = 'cd ' + l.c;
+    div.style.animationDelay = (i * 90) + 'ms';
+    div.innerHTML = l.h;
+    d.appendChild(div);
+  });
+}
+function annotate(tr, html, color){
+  if (!tr || !tr.isConnected) return;
+  const s = document.createElement('span');
+  s.className = 'cap-tag';
+  s.innerHTML = ` <span style="color:${color}">▸ ${html}</span>`;
+  tr.querySelector('.cinfo').appendChild(s);
+  tr.classList.add('cap-flash');
+  setTimeout(() => tr.classList.remove('cap-flash'), 900 / Math.max(state.speed, .5));
+}
+function arpDetail(bytes, dirTxt, srcM, srcWho, opcodeTxt, extraNote, senderM, senderIP, targetM, targetIP){
+  return [
+    {c:'l1', h:`帧 · ${bytes} 字节 · 捕获于 ${dirTxt}`},
+    {c:'l2', h:'▸ Ethernet II'},
+    {c:'l3', h:`目的MAC: <b>FF:FF:FF:FF:FF:FF</b> <span class="who">(广播)</span>`},
+    {c:'l3', h:`源MAC: <b>${srcM}</b> <span class="who">(${srcWho})</span>`},
+    {c:'l3', h:`类型: <b>0x0806</b> (ARP)`},
+    {c:'l2', h:'▸ Address Resolution Protocol'},
+    {c:'l3', h:`Hardware: 1 (Ethernet) · Protocol: 0x0800 (IPv4)`},
+    {c:'l3', h:`Opcode: <b>${opcodeTxt}</b>${extraNote || ''}`},
+    {c:'l3', h:`Sender MAC: <b>${senderM}</b> · Sender IP: <b>${senderIP}</b>`},
+    {c:'l3', h:`Target MAC: <b>${targetM}</b> · Target IP: <b>${targetIP}</b>`},
+  ];
+}
+function ipDetail(bytes, dirTxt, dstM, dstWho, srcM, srcWho, srcIP, dstIP, payload){
+  return [
+    {c:'l1', h:`帧 · ${bytes} 字节 · 捕获于 ${dirTxt}`},
+    {c:'l2', h:'▸ Ethernet II'},
+    {c:'l3', h:`目的MAC: <b>${dstM}</b> <span class="who">(${dstWho})</span>`},
+    {c:'l3', h:`源MAC: <b>${srcM}</b> <span class="who">(${srcWho})</span>`},
+    {c:'l3', h:`类型: <b>0x0800</b> (IPv4)`},
+    {c:'l2', h:'▸ Internet Protocol Version 4'},
+    {c:'l3', h:`Version: 4 · Header: 20B · TTL: 64 · Protocol: TCP (6)`},
+    {c:'l3', h:`Src: <b>${srcIP}</b> → Dst: <b>${dstIP}</b>`},
+    {c:'l3', h:`载荷: ${payload}`},
+  ];
+}
+
+function resetScene(){
+  runToken++;
+  const sc = scenarios[state.scenario];
+  state.stepIdx = 0;
+  state.playing = false;
+  clearFx();
+  resetCap();
+  sc.preseed();
+  log(`<span class="la">▶</span> 开始演示：<b>${sc.name}</b>`);
+  snapshots = [captureState()];
+  showStep(sc, 0);
+  updButtons();
+}
+function selectScenario(i){
+  state.scenario = i;
+  document.querySelectorAll('.tab').forEach((t, k) => t.classList.toggle('active', k === i));
+  resetScene();
+}
+
+async function ensurePlaying(){
+  if (state.playing) return;
+  const sc = scenarios[state.scenario];
+  state.playing = true; updButtons();
+  const tok = runToken;
+  try {
+    while (true){
+      if (tok !== runToken) return;
+      if (state.stepIdx >= sc.steps.length){ state.playing = false; showDone(sc); updButtons(); return; }
+      showStep(sc, state.stepIdx);
+      snapTo(state.stepIdx);
+      await sc.steps[state.stepIdx].run(tok);
+      if (tok !== runToken) break;
+      state.stepIdx++;
+      updButtons();
+      if (!state.playing) break;
+      if (state.stepIdx < sc.steps.length) await sleep(1300);
+    }
+  } catch (e){ if (!e || !e.aborted) console.error(e); }
+  if (tok === runToken){ state.playing = false; updButtons(); }
+}
+
+async function stepNext(){
+  const sc = scenarios[state.scenario];
+  if (state.stepIdx >= sc.steps.length) return;
+  const tok = runToken;
+  try {
+    showStep(sc, state.stepIdx);
+    snapTo(state.stepIdx);
+    await sc.steps[state.stepIdx].run(tok);
+    if (tok !== runToken) return;
+    state.stepIdx++;
+    if (state.stepIdx >= sc.steps.length) showDone(sc);
+    else { renderDots(sc.steps.length, state.stepIdx, true); }
+    updButtons();
+  } catch (e){ if (!e || !e.aborted) console.error(e); }
+}
+
+function stepBack(){
+  const sc = scenarios[state.scenario];
+  if (state.stepIdx <= 0) return;
+  const target = state.stepIdx - 1;
+  if (snapshots[target] == null) return;
+  state.stepIdx = target;
+  restoreTo(target);
+  showStep(sc, target);
+  updButtons();
+}
+
+/* 手动导航：播放中点击会立即接管（中止当前步并回滚到步开始），再执行上一步/下一步 */
+function manualNav(dir){
+  if (state.playing){
+    state.playing = false;
+    runToken++;                                    // 硬中止当前动画
+    if (snapshots[state.stepIdx]) restoreTo(state.stepIdx);  // 半途的步回滚到起点
+    updButtons();
+  }
+  if (dir < 0) stepBack();
+  else stepNext();
+}
+
+el('btnPlay').onclick = () => {
+  const done = state.stepIdx >= scenarios[state.scenario].steps.length;
+  if (state.playing){ state.playing = false; updButtons(); }      // 暂停
+  else if (done){ resetScene(); ensurePlaying(); }                // 重播（自动）
+  else ensurePlaying();                                           // 继续
+};
+el('btnPrev').onclick = () => manualNav(-1);
+el('btnNext').onclick = () => manualNav(1);
+el('btnReset').onclick = resetScene;
+el('selSpeed').onchange = e => { state.speed = parseFloat(e.target.value); };
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space'){ e.preventDefault(); el('btnPlay').click(); }
+  else if (e.code === 'ArrowRight'){ manualNav(1); }
+  else if (e.code === 'ArrowLeft'){ manualNav(-1); }
+  else if (e.key === 'r' || e.key === 'R'){ resetScene(); }
+});
+
+/* 启动：默认暂停在第 1 步，等用户操作 */
+selectScenario(0);
+</script>
+</body>
+</html>
